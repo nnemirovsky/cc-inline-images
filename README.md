@@ -70,6 +70,9 @@ Relative paths resolve against the session's working directory.
 * Inline images are sized to about 100 columns and 24 rows, keeping their aspect
   ratio. The hotkey pane fits the image to the pane.
 * Pasted images are looked up in the conversation by their `[Image #N]` marks.
+* Background sessions (`claude --bg`) show nothing extra. You view them through
+  `claude attach`, which draws an image as its description only, so the plugin
+  leaves those sessions alone and does not take hotkey requests there.
 
 ## Development
 

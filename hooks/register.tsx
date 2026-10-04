@@ -40,6 +40,16 @@ function fromBase64(key: string, base64: string, mime: string): Picture {
   return pictures.get(key) ?? remember(key, picture(Uint8Array.fromBase64(base64), mime))
 }
 
+// A background session (`claude --bg`) is viewed through `claude attach`, which
+// draws an Image as its alt text only. There the mod stays out of the way and
+// leaves the inbox alone, so a hotkey falls back to its own viewer.
+let isBackground: boolean | undefined
+
+async function inBackground($: EngineInterface): Promise<boolean> {
+  isBackground ??= (await $.env.get('CLAUDE_CODE_SESSION_KIND')) === 'bg'
+  return isBackground
+}
+
 async function resolvePath($: EngineInterface, path: string): Promise<string> {
   if (path.startsWith('~/')) return `${(await $.env.get('HOME')) ?? ''}${path.slice(1)}`
   if (path.startsWith('/')) return path
@@ -169,6 +179,7 @@ async function clickable($: EngineInterface, e: RenderInput, text: string) {
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     const home = (await $.env.get('HOME')) ?? ''
+    if (await inBackground($)) return next(e)
     const names = [await $.session.id(), await $.env.get('AGTERM_SESSION_ID')].filter((n): n is string => !!n)
     $.clock.every(1000, () => {
       void (async () => {
@@ -196,6 +207,7 @@ export const register: Register = on => {
   // Images Claude reads: in fullscreen the reads fold into one group line.
   on('ui.render', { component: 'ToolGroup' }, async ($, e, next) => {
     const drawn = await next(e)
+    if (await inBackground($)) return drawn
     if (e.surface !== 'terminal') return drawn
     const images = e.props.calls
       .map((c, i) => ({ c, i, img: c.tool === 'Read' ? readImage(c.output) : undefined }))
@@ -222,6 +234,7 @@ export const register: Register = on => {
   // A standalone tool row's result: Read images, sent files, shell output.
   on('ui.render', { component: 'ToolResult' }, async ($, e, next) => {
     const drawn = await next(e)
+    if (await inBackground($)) return drawn
     if (e.surface !== 'terminal' || e.props.isErrored) return drawn
     const { Box } = els($, e)
     const extra = []
@@ -246,6 +259,7 @@ export const register: Register = on => {
   // Your prompts: pasted images inline, mentioned paths to click open.
   on('ui.render', { component: 'UserMessage' }, async ($, e, next) => {
     const drawn = await next(e)
+    if (await inBackground($)) return drawn
     if (e.surface !== 'terminal' || e.props.origin.kind !== 'composer') return drawn
     const images = await pastedImages($, e.props.text)
     const extra = [
@@ -265,6 +279,7 @@ export const register: Register = on => {
   // Claude's replies: mentioned paths to click open.
   on('ui.render', { component: 'AssistantMessage' }, async ($, e, next) => {
     const drawn = await next(e)
+    if (await inBackground($)) return drawn
     const extra = await clickable($, e, e.props.text)
     if (extra.length === 0) return drawn
     const { Box } = els($, e)
