@@ -70,9 +70,11 @@ Relative paths resolve against the session's working directory.
 * Inline images are sized to about 100 columns and 24 rows, keeping their aspect
   ratio. The hotkey pane fits the image to the pane.
 * Pasted images are looked up in the conversation by their `[Image #N]` marks.
-* Background sessions (`claude --bg`) show nothing extra. You view them through
-  `claude attach`, which draws an image as its description only, so the plugin
-  leaves those sessions alone and does not take hotkey requests there.
+* Background sessions (`claude --bg`, viewed with `claude attach`) do not ask the
+  terminal whether it can draw images, so they draw nothing unless told it can. Set
+  `CLAUDE_CODE_FORCE_TERMINAL_IMAGES=1` in the `env` block of `~/.claude/settings.json`
+  on the machine that runs them, and only when every terminal you attach from draws
+  kitty graphics. Without it the plugin leaves those sessions alone.
 
 ## Development
 

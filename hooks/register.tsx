@@ -40,14 +40,21 @@ function fromBase64(key: string, base64: string, mime: string): Picture {
   return pictures.get(key) ?? remember(key, picture(Uint8Array.fromBase64(base64), mime))
 }
 
-// A background session (`claude --bg`) is viewed through `claude attach`, which
-// draws an Image as its alt text only. There the mod stays out of the way and
-// leaves the inbox alone, so a hotkey falls back to its own viewer.
+// A background session (`claude --bg`, viewed through `claude attach`) never
+// asks the terminal about kitty graphics, so it draws an Image as its alt text
+// unless CLAUDE_CODE_FORCE_TERMINAL_IMAGES is set. Without it the mod stays out
+// of the way and leaves the inbox alone, so a hotkey falls back to its viewer.
 let isBackground: boolean | undefined
+let cannotDraw: boolean | undefined
 
-async function inBackground($: EngineInterface): Promise<boolean> {
+async function background($: EngineInterface): Promise<boolean> {
   isBackground ??= (await $.env.get('CLAUDE_CODE_SESSION_KIND')) === 'bg'
   return isBackground
+}
+
+async function inBackground($: EngineInterface): Promise<boolean> {
+  cannotDraw ??= (await background($)) && !(await $.env.get('CLAUDE_CODE_FORCE_TERMINAL_IMAGES'))
+  return cannotDraw
 }
 
 async function resolvePath($: EngineInterface, path: string): Promise<string> {
@@ -180,7 +187,10 @@ export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     const home = (await $.env.get('HOME')) ?? ''
     if (await inBackground($)) return next(e)
-    const names = [await $.session.id(), await $.env.get('AGTERM_SESSION_ID')].filter((n): n is string => !!n)
+    // The daemon hands a background session the pane id of the terminal that
+    // started it, which belongs to another session; answer to the session id only.
+    const paneId = (await background($)) ? undefined : await $.env.get('AGTERM_SESSION_ID')
+    const names = [await $.session.id(), paneId].filter((n): n is string => !!n)
     $.clock.every(1000, () => {
       void (async () => {
         for (const name of names) {
