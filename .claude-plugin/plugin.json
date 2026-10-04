@@ -1,0 +1,26 @@
+{
+  "name": "inline-images",
+  "version": "0.1.0",
+  "description": "Images inline in the Claude Code transcript through the terminal's kitty graphics: files Claude sends or reads, pasted images, image paths, locally and over ssh",
+  "author": {
+    "name": "Nikita Nemirovsky",
+    "url": "https://github.com/nnemirovsky"
+  },
+  "homepage": "https://github.com/nnemirovsky/cc-inline-images",
+  "repository": "https://github.com/nnemirovsky/cc-inline-images",
+  "documentationUrl": "https://github.com/nnemirovsky/cc-inline-images#readme",
+  "supportUrl": "https://github.com/nnemirovsky/cc-inline-images/issues",
+  "license": "MIT",
+  "keywords": [
+    "images",
+    "kitty-graphics",
+    "ghostty",
+    "inline-images",
+    "screenshots",
+    "ssh",
+    "mod",
+    "function-hooks"
+  ],
+  "privacyPolicyUrl": "https://github.com/nnemirovsky/cc-inline-images/blob/main/PRIVACY.md",
+  "types": "./types/index.d.ts"
+}
