@@ -1,6 +1,6 @@
 {
   "name": "inline-images",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Images inline in the Claude Code transcript through the terminal's kitty graphics: files Claude sends or reads, pasted images, image paths, locally and over ssh",
   "owner": {
     "name": "nnemirovsky"
