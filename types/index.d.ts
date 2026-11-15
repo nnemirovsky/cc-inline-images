@@ -1,4 +1,4 @@
-/** Keys `<row>|<path>` of the image paths clicked open. */
+/** Keys `<row>|<path>` of the image paths clicked open, `<call>|read` of the read images. */
 export type InlineImagesOpen = string[]
 
 declare module 'claude-code' {
