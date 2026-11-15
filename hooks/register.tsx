@@ -8,9 +8,12 @@ import type { Picture } from './image'
 // they come up:
 //
 // * files Claude sends you (SendUserFile, SendUserMessage attachments)
-// * images Claude reads (Read)
 // * images you paste ([Image #N])
-// * image paths in replies, prompts and shell output: a line to click open
+// * images Claude reads (Read), image paths in replies, prompts and shell
+//   output: a line to click open
+//
+// What Claude looked at while working stays folded, and a folded run of tool
+// calls shows none of it until you unfold the run.
 //
 // and a pane for an image path handed to the session from outside (the
 // agterm hotkey writes it to an inbox file next to the session).
@@ -152,34 +155,60 @@ function width(e: RenderInput): number {
   return Math.min(120, (e.viewport?.columns ?? 100) - 8)
 }
 
-// Lines to click open for the image paths a text mentions, each followed by
-// the picture while it is open.
+// A `▸ label` line to click, and the picture under it while it is open.
+async function fold(
+  $: EngineInterface,
+  e: RenderInput,
+  line: { id: string; key: string; label: string },
+  load: () => Picture | Promise<Picture>,
+) {
+  const { Box, Button } = els($, e)
+  const { id, key, label } = line
+  const shown = (await read($, open)).includes(key)
+  return [
+    <Box key={`img-${id}`} marginLeft={2}>
+      <Button
+        key={`toggle-${id}`}
+        plain
+        label={`${shown ? '▾' : '▸'} ${label}`}
+        onPress={() => update($, open, list => (list.includes(key) ? list.filter(k => k !== key) : [...list, key]))}
+      />
+    </Box>,
+    shown ? drawPicture($, e, await load(), width(e), 30, label) : undefined,
+  ]
+}
+
+// Lines to click open for the image paths a text mentions.
 async function clickable($: EngineInterface, e: RenderInput, text: string) {
   if (e.surface !== 'terminal') return []
-  const found: { shown: string; path: string }[] = []
+  const rows = []
+  let i = 0
   for (const shown of imagePaths(text)) {
     const path = await resolvePath($, shown)
-    if (await isImageFile($, path)) found.push({ shown, path })
+    if (!(await isImageFile($, path))) continue
+    rows.push(...(await fold($, e, { id: `${i++}`, key: `${e.requestId}|${path}`, label: shown }, () => fromFile($, path))))
   }
-  if (found.length === 0) return []
-  const { Box, Button } = els($, e)
-  const isOpen = await read($, open)
+  return rows
+}
+
+// What goes under a finished tool call: the files Claude sent you, drawn, and
+// what it only looked at (an image it read, the image paths in shell output)
+// as lines to click open. Clicks need the fullscreen renderer, so on the main
+// screen a read image is drawn.
+async function under($: EngineInterface, e: RenderInput, call: { id: string; tool: string; output: unknown; path?: string }) {
+  if (e.surface !== 'terminal') return []
   const rows = []
-  for (const [i, f] of found.entries()) {
-    const key = `${e.requestId}|${f.path}`
-    const shown = isOpen.includes(key)
-    rows.push(
-      <Box key={`img-${i}`} marginLeft={2}>
-        <Button
-          key={`toggle-${i}`}
-          plain
-          label={`${shown ? '▾' : '▸'} ${f.shown}`}
-          onPress={() => update($, open, list => (list.includes(key) ? list.filter(k => k !== key) : [...list, key]))}
-        />
-      </Box>,
-    )
-    if (shown) rows.push(drawPicture($, e, await fromFile($, f.path), width(e), 30, f.shown))
+  for (const a of attachments(call.output)) {
+    rows.push(drawPicture($, e, await fromFile($, await resolvePath($, a.path)), width(e), 24, a.path.split('/').pop() ?? 'image'))
   }
+  const img = call.tool === 'Read' ? readImage(call.output) : undefined
+  if (img) {
+    const label = call.path?.split('/').pop() || 'image'
+    const load = () => fromBase64(call.id, img.file.base64, img.file.type)
+    if (e.viewport?.isFullscreen === true) rows.push(...(await fold($, e, { id: 'read', key: `${call.id}|read`, label }, load)))
+    else rows.push(drawPicture($, e, load(), width(e), 24, label))
+  }
+  if (call.tool === 'Bash') rows.push(...(await clickable($, e, (call.output as { stdout?: string } | undefined)?.stdout ?? '')))
   return rows
 }
 
@@ -214,50 +243,37 @@ export const register: Register = on => {
     return next(e)
   })
 
-  // Images Claude reads: in fullscreen the reads fold into one group line.
-  on('ui.render', { component: 'ToolGroup' }, async ($, e, next) => {
+  // A row drawn in full has its result in it: a call of a run you unfolded,
+  // and every call under ctrl+o or --verbose. A folded run is left as it is.
+  on('ui.render', { component: 'ToolUse', props: { isExpanded: true } }, async ($, e, next) => {
     const drawn = await next(e)
     if (await inBackground($)) return drawn
-    if (e.surface !== 'terminal') return drawn
-    const images = e.props.calls
-      .map((c, i) => ({ c, i, img: c.tool === 'Read' ? readImage(c.output) : undefined }))
-      .filter(x => x.img !== undefined)
-    // Shell output folded into the group: its image paths, to click open.
-    const shell = e.props.calls
-      .filter(c => c.tool === 'Bash')
-      .map(c => (c.output as { stdout?: string } | undefined)?.stdout ?? '')
-      .join('\n')
-    const links = await clickable($, e, shell)
-    if (images.length === 0 && links.length === 0) return drawn
+    if (e.props.isErrored || e.props.output === undefined) return drawn
+    const path = (e.props.input as { file_path?: unknown } | undefined)?.file_path
+    const extra = await under($, e, {
+      id: e.props.tool_use_id,
+      tool: e.props.tool,
+      output: e.props.output,
+      path: typeof path === 'string' ? path : undefined,
+    })
+    if (extra.length === 0) return drawn
     const { Box } = els($, e)
     return (
       <Box flexDirection="column">
         {drawn}
-        {images.map(({ c, i, img }) =>
-          drawPicture($, e, fromBase64(c.tool_use_id ?? `${e.requestId}:${i}`, img!.file.base64, img!.file.type), width(e), 24, 'image'),
-        )}
-        {links}
+        {extra}
       </Box>
     )
   })
 
-  // A standalone tool row's result: Read images, sent files, shell output.
+  // The result under a standalone tool row; drawn in full, the row above has it.
   on('ui.render', { component: 'ToolResult' }, async ($, e, next) => {
     const drawn = await next(e)
     if (await inBackground($)) return drawn
-    if (e.surface !== 'terminal' || e.props.isErrored) return drawn
-    const { Box } = els($, e)
-    const extra = []
-    const img = e.props.tool === 'Read' ? readImage(e.props.output) : undefined
-    if (img) extra.push(drawPicture($, e, fromBase64(e.props.tool_use_id, img.file.base64, img.file.type), width(e), 24, 'image'))
-    for (const a of attachments(e.props.output)) {
-      extra.push(drawPicture($, e, await fromFile($, await resolvePath($, a.path)), width(e), 24, a.path.split('/').pop() ?? 'image'))
-    }
-    if (e.props.tool === 'Bash') {
-      const out = e.props.output as { stdout?: string } | undefined
-      extra.push(...(await clickable($, e, out?.stdout ?? '')))
-    }
+    if (e.props.isErrored || e.props.isExpanded === true) return drawn
+    const extra = await under($, e, { id: e.props.tool_use_id, tool: e.props.tool, output: e.props.output })
     if (extra.length === 0) return drawn
+    const { Box } = els($, e)
     return (
       <Box flexDirection="column">
         {drawn}

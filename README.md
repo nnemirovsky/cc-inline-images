@@ -12,10 +12,14 @@ session on a remote server over ssh, with nothing copied back to your machine.
 | Where | How |
 |---|---|
 | Files Claude sends you (`SendUserFile`, attachments of `SendUserMessage`) | inline, under the `› [image]` lines |
-| Images Claude reads with `Read` | inline, under the read |
 | Images you paste (`[Image #N]`) | inline, under your message |
-| Image paths in Claude's replies, your prompts and shell output, when the file exists | a `▸ path` line; click it to unfold the image, click again to fold it |
+| Images Claude reads with `Read` | a `▸ name` line under the read; click it to unfold the image, click again to fold it |
+| Image paths in Claude's replies, your prompts and shell output, when the file exists | a `▸ path` line, clicked the same way |
 | A path handed to the session from outside (see [Hotkeys](#hotkeys-and-scripts)) | a pane beside the transcript |
+
+Only what was put in front of you is drawn right away. What Claude looked at while
+working stays one line until you click it, and a folded run of tool calls (`Read 3
+files, ran 2 shell commands`) shows nothing of it until you unfold the run.
 
 PNG is drawn as is. JPEG and GIF (first frame) are decoded by a small bundled
 decoder and scaled to fit, so a server needs no image tools. WebP shows a line
@@ -30,11 +34,13 @@ and any server with the plugin installed works the same way.
 
 ## Requirements
 
-* Claude Code 2.1.289 or later, with function-hook mods available to your account
+* Claude Code 2.1.317 or later, with function-hook mods available to your account
 * A terminal with the kitty graphics protocol and its Unicode placeholders: kitty,
   Ghostty, and terminals built on them (agterm). Elsewhere each image shows as a
   one-line description instead.
-* The fullscreen renderer (`/tui fullscreen`) for clicking `▸` lines open
+* The fullscreen renderer (`/tui fullscreen`) for clicking `▸` lines open. Without it
+  there is nothing to click, so an image Claude read is drawn inline once its run
+  of tool calls is unfolded (ctrl+o).
 
 ## Install
 
